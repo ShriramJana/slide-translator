@@ -1,0 +1,6 @@
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+python-multipart==0.0.34
+python-pptx==1.0.2
+python-dotenv==1.2.4
+deepl==1.33.0
