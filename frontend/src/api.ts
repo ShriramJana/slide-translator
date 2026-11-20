@@ -1,15 +1,17 @@
 export const LANGUAGES = [
-  { code: 'JA', name: 'Japanese' },
-  { code: 'ZH', name: 'Chinese' },
-  { code: 'KO', name: 'Korean' },
-  { code: 'ES', name: 'Spanish' },
-  { code: 'FR', name: 'French' },
-  { code: 'DE', name: 'German' },
-  { code: 'PT-BR', name: 'Portuguese (Brazil)' },
-  { code: 'IT', name: 'Italian' },
+  { code: 'JA', name: 'Japanese', native: '日本語' },
+  { code: 'ZH', name: 'Chinese', native: '中文' },
+  { code: 'KO', name: 'Korean', native: '한국어' },
+  { code: 'ES', name: 'Spanish', native: 'Español' },
+  { code: 'FR', name: 'French', native: 'Français' },
+  { code: 'DE', name: 'German', native: 'Deutsch' },
+  { code: 'PT-BR', name: 'Portuguese (Brazil)', native: 'Português' },
+  { code: 'IT', name: 'Italian', native: 'Italiano' },
 ]
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024
+
+const UNREACHABLE = 'Could not reach the server. Is the backend running?'
 
 export type Mode = 'deepl' | 'mock' | 'offline'
 
@@ -31,6 +33,11 @@ export function validateFile(file: File): string | null {
   return null
 }
 
+export function formatSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 export async function getMode(): Promise<Mode> {
   try {
     const res = await fetch('/api/health')
@@ -42,26 +49,32 @@ export async function getMode(): Promise<Mode> {
   }
 }
 
-export async function translatePptx(file: File, lang: string): Promise<Translation> {
+// Uses XMLHttpRequest instead of fetch because it reports when the upload
+// has finished, which lets the UI tell "uploading" apart from "translating".
+export function translatePptx(file: File, lang: string, onUploaded?: () => void): Promise<Translation> {
   const form = new FormData()
   form.append('file', file)
   form.append('target_lang', lang)
 
-  let res: Response
-  try {
-    res = await fetch('/api/translate', { method: 'POST', body: form })
-  } catch {
-    throw new Error('Could not reach the server. Is the backend running?')
-  }
-
-  if (!res.ok) {
-    throw new Error(await readError(res))
-  }
-
   const stem = file.name.replace(/\.pptx$/i, '')
   const fallback = `${stem}_${lang.toLowerCase()}.pptx`
-  const filename = parseFilename(res.headers.get('Content-Disposition')) ?? fallback
-  return { blob: await res.blob(), filename }
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/translate')
+    xhr.responseType = 'blob'
+    xhr.upload.onload = () => onUploaded?.()
+    xhr.onerror = () => reject(new Error(UNREACHABLE))
+    xhr.onload = async () => {
+      if (xhr.status !== 200) {
+        reject(new Error(await readError(xhr.response)))
+        return
+      }
+      const filename = parseFilename(xhr.getResponseHeader('Content-Disposition')) ?? fallback
+      resolve({ blob: xhr.response, filename })
+    }
+    xhr.send(form)
+  })
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
@@ -76,14 +89,14 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-async function readError(res: Response): Promise<string> {
+async function readError(body: Blob | null): Promise<string> {
   try {
-    const body = await res.json()
-    if (typeof body.error === 'string') return body.error
+    const data = JSON.parse(await body!.text())
+    if (typeof data.error === 'string') return data.error
   } catch {
     // not JSON, e.g. the dev proxy answering for a stopped backend
   }
-  return 'Could not reach the server. Is the backend running?'
+  return UNREACHABLE
 }
 
 function parseFilename(header: string | null): string | null {

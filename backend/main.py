@@ -23,7 +23,7 @@ LANGUAGES = {"JA", "ZH", "KO", "ES", "FR", "DE", "PT-BR", "IT"}
 MAX_BYTES = 10 * 1024 * 1024
 PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
-app = FastAPI(title="Slide Translator")
+app = FastAPI(title="FlipDeck")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],

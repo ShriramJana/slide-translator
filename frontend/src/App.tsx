@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, DragEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { LANGUAGES, downloadBlob, getMode, translatePptx, validateFile } from './api'
 import type { Mode, Translation } from './api'
+import { DoneDialog, ErrorDialog, LanguageDialog, ProgressDialog } from './components/Dialogs'
+import { Dropzone } from './components/Dropzone'
+import { LayoutIcon, ShieldIcon } from './components/icons'
+import { Logo } from './components/Logo'
 import './App.css'
 
 type Status = 'idle' | 'ready' | 'processing' | 'done' | 'error'
 
-function formatSize(bytes: number) {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+const MODE_LABELS: Record<Mode, string> = {
+  deepl: 'DeepL connected',
+  mock: 'Mock mode: text is only tagged',
+  offline: 'Backend unreachable',
 }
 
 function App() {
@@ -16,21 +20,17 @@ function App() {
   const [file, setFile] = useState<File | null>(null)
   const [lang, setLang] = useState('JA')
   const [error, setError] = useState('')
+  const [uploaded, setUploaded] = useState(false)
   const [result, setResult] = useState<Translation | null>(null)
   const [mode, setMode] = useState<Mode | null>(null)
-  const [dragging, setDragging] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
 
-  const busy = status === 'processing'
-  const langName = LANGUAGES.find((l) => l.code === lang)?.name ?? lang
+  const languageName = LANGUAGES.find((l) => l.code === lang)?.name ?? lang
 
   useEffect(() => {
     getMode().then(setMode)
   }, [])
 
-  function selectFile(picked: File | undefined) {
-    if (!picked) return
-    setResult(null)
+  function selectFile(picked: File) {
     const problem = validateFile(picked)
     if (problem) {
       setFile(null)
@@ -43,29 +43,14 @@ function App() {
     }
   }
 
-  function handleChange(e: ChangeEvent<HTMLInputElement>) {
-    selectFile(e.target.files?.[0])
-    e.target.value = ''
-  }
-
-  function handleDrop(e: DragEvent) {
-    e.preventDefault()
-    setDragging(false)
-    if (!busy) selectFile(e.dataTransfer.files[0])
-  }
-
-  function handleDragOver(e: DragEvent) {
-    e.preventDefault()
-    if (!busy) setDragging(true)
-  }
-
-  async function handleTranslate() {
+  async function translate() {
     if (!file) return
     setStatus('processing')
+    setUploaded(false)
     setError('')
     setResult(null)
     try {
-      setResult(await translatePptx(file, lang))
+      setResult(await translatePptx(file, lang, () => setUploaded(true)))
       setStatus('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Translation failed.')
@@ -81,73 +66,55 @@ function App() {
   }
 
   return (
-    <main className="card">
-      <header>
-        <h1>Slide Translator</h1>
-        <p className="subtitle">Upload a PowerPoint and get it back translated, layout intact.</p>
-        {mode === 'mock' && <p className="badge">Mock mode: text is only tagged</p>}
-        {mode === 'offline' && <p className="badge badge-error">Backend unreachable</p>}
+    <>
+      <header className="topbar">
+        <div className="brand">
+          <Logo size={34} accent="var(--accent)" bg="var(--bg)" />
+          FlipDeck
+        </div>
+        {mode && <span className={`mode mode-${mode}`}>{MODE_LABELS[mode]}</span>}
       </header>
 
-      <div
-        className={`dropzone${dragging ? ' dragging' : ''}${busy ? ' disabled' : ''}`}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={() => setDragging(false)}
-      >
-        <input ref={inputRef} type="file" accept=".pptx" hidden disabled={busy} onChange={handleChange} />
-        {file ? (
-          <p className="file">
-            <strong>{file.name}</strong>
-            <span>{formatSize(file.size)}</span>
-          </p>
-        ) : (
-          <p>Drag a .pptx file here</p>
-        )}
-        <button type="button" className="secondary" disabled={busy} onClick={() => inputRef.current?.click()}>
-          {file ? 'Choose a different file' : 'Choose file'}
-        </button>
-        <p className="hint">.pptx only, up to 10 MB</p>
-      </div>
+      <main className="page">
+        <h1>Translate your slides</h1>
+        <p className="lead">Upload a PowerPoint and get it back in another language, layout intact.</p>
 
-      <label className="field">
-        Translate into
-        <select value={lang} disabled={busy} onChange={(e) => setLang(e.target.value)}>
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-      </label>
+        <Dropzone onFile={selectFile} />
 
-      <button type="button" className="primary" disabled={!file || busy} onClick={handleTranslate}>
-        Translate
-      </button>
-
-      <div className="status" aria-live="polite">
-        {busy && file && (
-          <p className="progress">
-            <span className="spinner" />
-            Translating {file.name} into {langName}…
+        {status === 'error' && !file && (
+          <p className="file-error" role="alert">
+            {error}
           </p>
         )}
-        {status === 'error' && <p className="error">{error}</p>}
-        {status === 'done' && result && (
-          <>
-            <p className="success">Done</p>
-            <div className="actions">
-              <button type="button" className="primary" onClick={() => downloadBlob(result.blob, result.filename)}>
-                Download {result.filename}
-              </button>
-              <button type="button" className="secondary" onClick={reset}>
-                Translate another
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </main>
+
+        <div className="notes">
+          <span>
+            <LayoutIcon />
+            Text boxes, tables and grouped shapes stay where they are
+          </span>
+          <span>
+            <ShieldIcon />
+            Files are not stored on this server
+          </span>
+        </div>
+      </main>
+
+      {status === 'ready' && file && (
+        <LanguageDialog file={file} lang={lang} onLangChange={setLang} onConfirm={translate} onClose={reset} />
+      )}
+      {status === 'processing' && file && (
+        <ProgressDialog fileName={file.name} languageName={languageName} uploaded={uploaded} />
+      )}
+      {status === 'done' && result && (
+        <DoneDialog
+          fileName={result.filename}
+          languageName={languageName}
+          onDownload={() => downloadBlob(result.blob, result.filename)}
+          onReset={reset}
+        />
+      )}
+      {status === 'error' && file && <ErrorDialog message={error} onRetry={translate} onReset={reset} />}
+    </>
   )
 }
 
