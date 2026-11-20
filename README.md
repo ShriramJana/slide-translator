@@ -196,7 +196,7 @@ On failure the response is `{"error": "message"}` with one of these status codes
 
 | Status | When |
 |---|---|
-| 400 | No file, not a `.pptx`, empty file, not a real PowerPoint file, or an unsupported language |
+| 400 | No file, not a `.pptx`, empty file, not a real PowerPoint file, an unsupported language, or a deck that is already in the target language |
 | 413 | The file is larger than the limit |
 | 429 | The DeepL quota for the month is used up |
 | 500 | DeepL rejected the API key, or something unexpected went wrong |

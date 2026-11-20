@@ -102,7 +102,11 @@ def translate(
     except deepl.AuthorizationException:
         return error(500, "DeepL rejected the API key.")
     except deepl.DocumentTranslationException as exc:
-        return error(502, f"DeepL could not translate this document: {exc}")
+        # The full error text ends with DeepL's document ID and key. Keep those off the page.
+        reason = str(exc).split(", document handle:")[0]
+        if "Source and target language are equal" in reason:
+            return error(400, "This deck is already in that language. Pick a different one.")
+        return error(502, f"DeepL could not translate this document: {reason}")
     except Exception as exc:
         return error(500, f"Translation failed: {exc}")
 
