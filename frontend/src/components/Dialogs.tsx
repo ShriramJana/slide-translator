@@ -76,7 +76,7 @@ export function ProgressDialog({ fileName, languageName, uploaded }: ProgressDia
             </li>
           ))}
         </ul>
-        <p className="muted">Large decks can take a minute. Keep this tab open.</p>
+        <p className="muted">Large files can take a minute. Keep this tab open.</p>
       </div>
     </Modal>
   )
@@ -97,7 +97,7 @@ export function DoneDialog({ fileName, languageName, onDownload, onReset }: Done
           <CheckIcon />
         </div>
         <h2>Done</h2>
-        <p className="muted">Your deck has been translated into {languageName}.</p>
+        <p className="muted">Your file has been translated into {languageName}.</p>
         <button type="button" className="button primary" onClick={onDownload}>
           Download {fileName}
         </button>

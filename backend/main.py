@@ -23,7 +23,11 @@ LANGUAGES = {"JA", "ZH", "KO", "ES", "FR", "DE", "PT-BR", "IT"}
 # Vercel rejects request and response bodies over 4.5 MB.
 MAX_MB = 4 if os.getenv("VERCEL") else 10
 MAX_BYTES = MAX_MB * 1024 * 1024
-PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+# Supported file types: the bytes every such file starts with, and its MIME type.
+FILE_TYPES = {
+    ".pptx": (b"PK", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    ".pdf": (b"%PDF", "application/pdf"),
+}
 
 app = FastAPI(title="FlipDeck")
 app.add_middleware(
@@ -41,7 +45,7 @@ def error(status, message):
 
 @app.exception_handler(RequestValidationError)
 def invalid_request(request, exc):
-    return error(400, "Please upload a .pptx file.")
+    return error(400, "Please upload a .pptx or .pdf file.")
 
 
 def pick_key(header_key):
@@ -79,8 +83,10 @@ def translate(
     key = pick_key(x_deepl_key)
     lang = target_lang.upper()
 
-    if not filename.lower().endswith(".pptx"):
-        return error(400, "Only .pptx files are supported.")
+    ext = Path(filename).suffix.lower()
+    if ext not in FILE_TYPES:
+        return error(400, "Only .pptx and .pdf files are supported.")
+    signature, mime = FILE_TYPES[ext]
     if lang not in LANGUAGES:
         return error(400, f"Unsupported target language: {target_lang}")
 
@@ -89,14 +95,14 @@ def translate(
         return error(400, "The file is empty.")
     if len(data) > MAX_BYTES:
         return error(413, f"File is larger than {MAX_MB} MB.")
-    if not data.startswith(b"PK"):
-        return error(400, "This doesn't look like a valid .pptx file.")
+    if not data.startswith(signature):
+        return error(400, f"This doesn't look like a valid {ext} file.")
 
     try:
         if key:
-            result = translate_with_deepl(data, filename, lang, key)
+            result = translate_with_deepl(data, filename, lang, key, ext)
         else:
-            result = translate_with_mock(data, lang)
+            result = translate_with_mock(data, lang, ext)
     except deepl.QuotaExceededException:
         return error(429, "DeepL quota exceeded for this month.")
     except deepl.AuthorizationException:
@@ -105,15 +111,15 @@ def translate(
         # The full error text ends with DeepL's document ID and key. Keep those off the page.
         reason = str(exc).split(", document handle:")[0]
         if "Source and target language are equal" in reason:
-            return error(400, "This deck is already in that language. Pick a different one.")
+            return error(400, "This file is already in that language. Pick a different one.")
         return error(502, f"DeepL could not translate this document: {reason}")
     except Exception as exc:
         return error(500, f"Translation failed: {exc}")
 
-    out_name = f"{Path(filename).stem}_{lang.lower()}.pptx"
+    out_name = f"{Path(filename).stem}_{lang.lower()}{ext}"
     return Response(
         result,
-        media_type=PPTX_MIME,
+        media_type=mime,
         headers={"Content-Disposition": content_disposition(out_name)},
     )
 
@@ -124,19 +130,22 @@ def content_disposition(name):
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
 
 
-def translate_with_deepl(data, filename, lang, key):
+def translate_with_deepl(data, filename, lang, key, ext):
     client = deepl.DeepLClient(key)
     with tempfile.TemporaryDirectory() as tmp:
-        src = Path(tmp) / "input.pptx"
-        dst = Path(tmp) / "output.pptx"
+        src = Path(tmp) / f"input{ext}"
+        dst = Path(tmp) / f"output{ext}"
         src.write_bytes(data)
         with open(src, "rb") as fin, open(dst, "wb") as fout:
             client.translate_document(fin, fout, target_lang=lang, filename=filename)
         return dst.read_bytes()
 
 
-def translate_with_mock(data, lang):
+def translate_with_mock(data, lang, ext):
     time.sleep(1.5)
+    if ext == ".pdf":
+        # There is no simple way to tag text inside a PDF, so it comes back unchanged.
+        return data
     deck = Presentation(BytesIO(data))
     for slide in deck.slides:
         tag_shapes(slide.shapes, f"[{lang}] ")

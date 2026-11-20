@@ -53,8 +53,8 @@ function keyHeaders(key = getSavedKey()): Record<string, string> {
 }
 
 export function validateFile(file: File, maxMb: number): string | null {
-  if (!file.name.toLowerCase().endsWith('.pptx')) {
-    return 'Only .pptx files are supported.'
+  if (!/\.(pptx|pdf)$/i.test(file.name)) {
+    return 'Only .pptx and .pdf files are supported.'
   }
   if (file.size === 0) {
     return 'The file is empty.'
@@ -96,13 +96,13 @@ export async function checkKey(key: string): Promise<Usage> {
 
 // Uses XMLHttpRequest instead of fetch because it reports when the upload
 // has finished, which lets the UI tell "uploading" apart from "translating".
-export function translatePptx(file: File, lang: string, onUploaded?: () => void): Promise<Translation> {
+export function translateFile(file: File, lang: string, onUploaded?: () => void): Promise<Translation> {
   const form = new FormData()
   form.append('file', file)
   form.append('target_lang', lang)
 
-  const stem = file.name.replace(/\.pptx$/i, '')
-  const fallback = `${stem}_${lang.toLowerCase()}.pptx`
+  const dot = file.name.lastIndexOf('.')
+  const fallback = `${file.name.slice(0, dot)}_${lang.toLowerCase()}${file.name.slice(dot)}`
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()

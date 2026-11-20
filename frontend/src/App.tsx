@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LANGUAGES, downloadBlob, getStatus, translatePptx, validateFile } from './api'
+import { LANGUAGES, downloadBlob, getStatus, translateFile, validateFile } from './api'
 import type { Mode, ServerStatus, Translation } from './api'
 import { DoneDialog, ErrorDialog, LanguageDialog, ProgressDialog } from './components/Dialogs'
 import { Dropzone } from './components/Dropzone'
@@ -53,7 +53,7 @@ function App() {
     setError('')
     setResult(null)
     try {
-      setResult(await translatePptx(file, lang, () => setUploaded(true)))
+      setResult(await translateFile(file, lang, () => setUploaded(true)))
       setStatus('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Translation failed.')
@@ -85,8 +85,8 @@ function App() {
       </header>
 
       <main className="page">
-        <h1>Translate your slides</h1>
-        <p className="lead">Upload a PowerPoint and get it back in another language, layout intact.</p>
+        <h1>Translate your slides and PDFs</h1>
+        <p className="lead">Upload a PowerPoint or PDF and get it back in another language, layout intact.</p>
 
         <Dropzone maxMb={maxMb} onFile={selectFile} />
 
@@ -99,7 +99,7 @@ function App() {
         <div className="notes">
           <span>
             <LayoutIcon />
-            Text boxes, tables and grouped shapes stay where they are
+            Layout, tables and images stay where they are
           </span>
           <span>
             <ShieldIcon />

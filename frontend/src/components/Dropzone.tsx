@@ -39,14 +39,14 @@ export function Dropzone({ maxMb, onFile }: DropzoneProps) {
         onDragOver={handleDragOver}
         onDragLeave={() => setDragging(false)}
       >
-        <input ref={inputRef} type="file" accept=".pptx" hidden onChange={handleChange} />
-        <button type="button" className="dropzone-button" aria-label="Choose a .pptx file">
+        <input ref={inputRef} type="file" accept=".pptx,.pdf" hidden onChange={handleChange} />
+        <button type="button" className="dropzone-button" aria-label="Choose a .pptx or .pdf file">
           <span>
             <PlusIcon />
           </span>
         </button>
-        <p className="dropzone-title">{dragging ? 'Drop it to upload' : 'Or drop your .pptx here'}</p>
-        <p className="dropzone-hint">PowerPoint only · Maximum file size: {maxMb} MB</p>
+        <p className="dropzone-title">{dragging ? 'Drop it to upload' : 'Or drop your .pptx or .pdf here'}</p>
+        <p className="dropzone-hint">PowerPoint or PDF · Maximum file size: {maxMb} MB</p>
       </div>
     </div>
   )

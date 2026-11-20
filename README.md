@@ -1,6 +1,6 @@
 # FlipDeck
 
-FlipDeck translates PowerPoint files. You upload a `.pptx`, pick a language, and download the same deck in that language with the layout, tables and images left where they were.
+FlipDeck translates PowerPoint and PDF files. You upload a `.pptx` or `.pdf`, pick a language, and download the same file in that language with the layout, tables and images left where they were.
 
 The translation itself is done by the [DeepL Document API](https://developers.deepl.com/docs/api-reference/document). FlipDeck is the web app around it: a React page for uploading and downloading, and a small Python server that passes the file to DeepL and hands back the result.
 
@@ -8,10 +8,10 @@ Live version: https://flipdeck-psi.vercel.app
 
 ## How it works
 
-1. You drop a `.pptx` on the page. The browser checks the extension and size before anything is uploaded.
+1. You drop a `.pptx` or `.pdf` on the page. The browser checks the extension and size before anything is uploaded.
 2. A dialog asks for the target language. Japanese is preselected.
 3. The file is sent to the backend, which checks it again and passes it to DeepL.
-4. DeepL returns the translated deck. The backend sends it straight back and the page offers it as a download named `{original name}_{language}.pptx`.
+4. DeepL returns the translated file. The backend sends it straight back and the page offers it as a download named `{original name}_{language}` with the original extension.
 
 Nothing is kept on the server. The upload is written to a temporary folder for the DeepL call and deleted as soon as the request ends.
 
@@ -62,7 +62,7 @@ frontend/
 
 `GET /api/usage` asks DeepL how many characters the key has used. The Settings dialog calls it to check that a key works before saving it.
 
-`POST /api/translate` takes the file and the language. It checks the upload in this order: file extension, language code, empty file, size, and whether the content is a zip archive (every `.pptx` is one). Then it calls one of two translators:
+`POST /api/translate` takes the file and the language. It checks the upload in this order: file extension, language code, empty file, size, and whether the content starts the way that file type should (a `.pptx` is a zip archive, a PDF starts with `%PDF`). Then it calls one of two translators:
 
 - `translate_with_deepl` writes the upload to a temporary folder and calls `translate_document` from the DeepL package, which uploads the file, waits for the translation and downloads the result.
 - `translate_with_mock` is used when no key is set. See [Mock mode](#mock-mode).
@@ -85,10 +85,10 @@ If `frontend/dist` exists, the backend also serves the built frontend. See [Runn
 
 The components only draw what they are given and report clicks back to `App.tsx`. None of them call the backend. All network code is in `api.ts`:
 
-- `validateFile` rejects files that are not `.pptx`, are empty, or are over the size limit.
+- `validateFile` rejects files that are not `.pptx` or `.pdf`, are empty, or are over the size limit.
 - `getStatus` calls the health route.
 - `getSavedKey`, `saveKey` and `checkKey` handle the DeepL key from the Settings dialog.
-- `translatePptx` uploads the file and returns the translated one. It uses `XMLHttpRequest` because that reports the moment the upload finishes, which is how the progress dialog knows to move from "Uploading" to "Translating".
+- `translateFile` uploads the file and returns the translated one. It uses `XMLHttpRequest` because that reports the moment the upload finishes, which is how the progress dialog knows to move from "Uploading" to "Translating".
 - `downloadBlob` saves the result to disk.
 
 ## Getting started
@@ -135,7 +135,7 @@ Keys ending in `:fx` are free-plan keys and are sent to DeepL's free endpoint au
 
 ### Mock mode
 
-If there is no key in Settings and none in `.env`, the backend does not contact DeepL. It waits a moment, then puts a tag such as `[JA]` in front of every paragraph in the deck, including text inside tables and grouped shapes. That is enough to try the whole upload and download flow without using any DeepL quota. The top bar shows "Mock mode" while this is active.
+If there is no key in Settings and none in `.env`, the backend does not contact DeepL. It waits a moment, then puts a tag such as `[JA]` in front of every paragraph in the deck, including text inside tables and grouped shapes. PDFs come back unchanged, because there is no simple way to tag text inside one. That is enough to try the whole upload and download flow without using any DeepL quota. The top bar shows "Mock mode" while this is active.
 
 ### Running on one port
 
@@ -187,16 +187,16 @@ Send `multipart/form-data` with two fields:
 
 | Field | Value |
 |---|---|
-| `file` | The `.pptx` file, up to `max_mb` |
+| `file` | The `.pptx` or `.pdf` file, up to `max_mb` |
 | `target_lang` | `JA`, `ZH`, `KO`, `ES`, `FR`, `DE`, `PT-BR` or `IT`. Defaults to `JA` |
 
-On success the response body is the translated `.pptx`, with the download name in the `Content-Disposition` header.
+On success the response body is the translated file, with the download name in the `Content-Disposition` header.
 
 On failure the response is `{"error": "message"}` with one of these status codes:
 
 | Status | When |
 |---|---|
-| 400 | No file, not a `.pptx`, empty file, not a real PowerPoint file, an unsupported language, or a deck that is already in the target language |
+| 400 | No file, not a `.pptx` or `.pdf`, empty file, content that does not match the extension, an unsupported language, or a file that is already in the target language |
 | 413 | The file is larger than the limit |
 | 429 | The DeepL quota for the month is used up |
 | 500 | DeepL rejected the API key, or something unexpected went wrong |
@@ -211,9 +211,9 @@ curl -F file=@deck.pptx -F target_lang=JA localhost:8000/api/translate -o deck_j
 
 ## Limits
 
-- Only `.pptx` files are supported.
-- Files can be up to 10 MB when you run it yourself, which is the DeepL Free limit for PowerPoint, and 4 MB on the Vercel version.
-- DeepL Free includes 500,000 characters a month and bills every `.pptx` as at least 50,000, so a free key covers about 10 translations a month. Use mock mode while working on the interface.
+- Only `.pptx` and `.pdf` files are supported. PDFs need real text in them: a scanned PDF that is only images has nothing for DeepL to translate.
+- Files can be up to 10 MB when you run it yourself, which is the DeepL Free limit, and 4 MB on the Vercel version.
+- DeepL Free includes 500,000 characters a month and bills every `.pptx` and `.pdf` as at least 50,000, so a free key covers about 10 translations a month. Use mock mode while working on the interface.
 - Translated text can be longer or shorter than the original, so check the result for text that no longer fits its box.
 - Decks are sent to DeepL for translation. Read DeepL's data handling terms before uploading confidential files.
 - There are no user accounts and no translation history.
