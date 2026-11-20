@@ -3,10 +3,11 @@ import type { ChangeEvent, DragEvent } from 'react'
 import { PlusIcon } from './icons'
 
 type DropzoneProps = {
+  maxMb: number
   onFile: (file: File) => void
 }
 
-export function Dropzone({ onFile }: DropzoneProps) {
+export function Dropzone({ maxMb, onFile }: DropzoneProps) {
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -45,7 +46,7 @@ export function Dropzone({ onFile }: DropzoneProps) {
           </span>
         </button>
         <p className="dropzone-title">{dragging ? 'Drop it to upload' : 'Or drop your .pptx here'}</p>
-        <p className="dropzone-hint">PowerPoint only · Maximum file size: 10 MB</p>
+        <p className="dropzone-hint">PowerPoint only · Maximum file size: {maxMb} MB</p>
       </div>
     </div>
   )

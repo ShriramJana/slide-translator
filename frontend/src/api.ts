@@ -9,26 +9,58 @@ export const LANGUAGES = [
   { code: 'IT', name: 'Italian', native: 'Italiano' },
 ]
 
-export const MAX_FILE_SIZE = 10 * 1024 * 1024
-
+const KEY_STORAGE = 'deepl-api-key'
 const UNREACHABLE = 'Could not reach the server. Is the backend running?'
 
 export type Mode = 'deepl' | 'mock' | 'offline'
+
+export type ServerStatus = {
+  mode: Mode
+  maxMb: number
+}
+
+export type Usage = {
+  used: number
+  limit: number | null
+}
 
 export type Translation = {
   blob: Blob
   filename: string
 }
 
-export function validateFile(file: File): string | null {
+// The DeepL key a visitor types into Settings lives only in their browser.
+// localStorage can be blocked (private windows), so every access is guarded.
+export function getSavedKey(): string {
+  try {
+    return localStorage.getItem(KEY_STORAGE) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function saveKey(key: string) {
+  try {
+    if (key) localStorage.setItem(KEY_STORAGE, key)
+    else localStorage.removeItem(KEY_STORAGE)
+  } catch {
+    // nothing to do, the key just won't be remembered
+  }
+}
+
+function keyHeaders(key = getSavedKey()): Record<string, string> {
+  return key ? { 'X-DeepL-Key': key } : {}
+}
+
+export function validateFile(file: File, maxMb: number): string | null {
   if (!file.name.toLowerCase().endsWith('.pptx')) {
     return 'Only .pptx files are supported.'
   }
   if (file.size === 0) {
     return 'The file is empty.'
   }
-  if (file.size > MAX_FILE_SIZE) {
-    return 'File is larger than 10 MB.'
+  if (file.size > maxMb * 1024 * 1024) {
+    return `File is larger than ${maxMb} MB.`
   }
   return null
 }
@@ -38,15 +70,28 @@ export function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-export async function getMode(): Promise<Mode> {
+export async function getStatus(): Promise<ServerStatus> {
   try {
-    const res = await fetch('/api/health')
-    if (!res.ok) return 'offline'
+    const res = await fetch('/api/health', { headers: keyHeaders() })
+    if (!res.ok) return { mode: 'offline', maxMb: 10 }
     const body = await res.json()
-    return body.mode === 'mock' ? 'mock' : 'deepl'
+    return { mode: body.mode === 'mock' ? 'mock' : 'deepl', maxMb: body.max_mb }
   } catch {
-    return 'offline'
+    return { mode: 'offline', maxMb: 10 }
   }
+}
+
+// Asks DeepL how much quota the key has used. Doubles as a check that the key works.
+export async function checkKey(key: string): Promise<Usage> {
+  let res: Response
+  try {
+    res = await fetch('/api/usage', { headers: keyHeaders(key) })
+  } catch {
+    throw new Error(UNREACHABLE)
+  }
+  const body = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(body?.error ?? UNREACHABLE)
+  return body
 }
 
 // Uses XMLHttpRequest instead of fetch because it reports when the upload
@@ -63,6 +108,9 @@ export function translatePptx(file: File, lang: string, onUploaded?: () => void)
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/translate')
     xhr.responseType = 'blob'
+    for (const [name, value] of Object.entries(keyHeaders())) {
+      xhr.setRequestHeader(name, value)
+    }
     xhr.upload.onload = () => onUploaded?.()
     xhr.onerror = () => reject(new Error(UNREACHABLE))
     xhr.onload = async () => {

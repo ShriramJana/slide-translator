@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import deepl
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Header, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -20,7 +20,9 @@ load_dotenv(BASE_DIR / ".env")
 
 DEEPL_API_KEY = os.getenv("DEEPL_API_KEY", "").strip()
 LANGUAGES = {"JA", "ZH", "KO", "ES", "FR", "DE", "PT-BR", "IT"}
-MAX_BYTES = 10 * 1024 * 1024
+# Vercel rejects request and response bodies over 4.5 MB.
+MAX_MB = 4 if os.getenv("VERCEL") else 10
+MAX_BYTES = MAX_MB * 1024 * 1024
 PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 app = FastAPI(title="FlipDeck")
@@ -42,14 +44,39 @@ def invalid_request(request, exc):
     return error(400, "Please upload a .pptx file.")
 
 
+def pick_key(header_key):
+    # A key sent by the browser wins over the one in .env.
+    return header_key.strip() or DEEPL_API_KEY
+
+
 @app.get("/api/health")
-def health():
-    return {"ok": True, "mode": "deepl" if DEEPL_API_KEY else "mock"}
+def health(x_deepl_key: str = Header("")):
+    mode = "deepl" if pick_key(x_deepl_key) else "mock"
+    return {"ok": True, "mode": mode, "max_mb": MAX_MB}
+
+
+@app.get("/api/usage")
+def usage(x_deepl_key: str = Header("")):
+    key = pick_key(x_deepl_key)
+    if not key:
+        return error(400, "No DeepL API key is set.")
+    try:
+        character = deepl.DeepLClient(key).get_usage().character
+    except deepl.AuthorizationException:
+        return error(401, "DeepL rejected the API key.")
+    except deepl.DeepLException as exc:
+        return error(502, f"Could not reach DeepL: {exc}")
+    return {"used": character.count, "limit": character.limit}
 
 
 @app.post("/api/translate")
-def translate(file: UploadFile = File(...), target_lang: str = Form("JA")):
+def translate(
+    file: UploadFile = File(...),
+    target_lang: str = Form("JA"),
+    x_deepl_key: str = Header(""),
+):
     filename = file.filename or ""
+    key = pick_key(x_deepl_key)
     lang = target_lang.upper()
 
     if not filename.lower().endswith(".pptx"):
@@ -61,13 +88,13 @@ def translate(file: UploadFile = File(...), target_lang: str = Form("JA")):
     if not data:
         return error(400, "The file is empty.")
     if len(data) > MAX_BYTES:
-        return error(413, "File is larger than 10 MB.")
+        return error(413, f"File is larger than {MAX_MB} MB.")
     if not data.startswith(b"PK"):
         return error(400, "This doesn't look like a valid .pptx file.")
 
     try:
-        if DEEPL_API_KEY:
-            result = translate_with_deepl(data, filename, lang)
+        if key:
+            result = translate_with_deepl(data, filename, lang, key)
         else:
             result = translate_with_mock(data, lang)
     except deepl.QuotaExceededException:
@@ -93,8 +120,8 @@ def content_disposition(name):
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
 
 
-def translate_with_deepl(data, filename, lang):
-    client = deepl.DeepLClient(DEEPL_API_KEY)
+def translate_with_deepl(data, filename, lang, key):
+    client = deepl.DeepLClient(key)
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "input.pptx"
         dst = Path(tmp) / "output.pptx"

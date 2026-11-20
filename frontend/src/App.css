@@ -18,6 +18,27 @@
   color: var(--heading);
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 0.85rem;
+}
+
+.settings-button:hover {
+  background: var(--soft);
+}
+
 .mode {
   display: inline-flex;
   align-items: center;
@@ -324,6 +345,22 @@ h1 {
   color: var(--muted);
 }
 
+.success-text {
+  color: var(--success);
+}
+
+.text-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft);
+}
+
+.modal a {
+  color: var(--accent);
+}
+
 /* Buttons */
 
 .button {
@@ -340,7 +377,12 @@ h1 {
   color: var(--on-accent);
 }
 
-.button.primary:hover {
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
 }
 
@@ -572,6 +614,10 @@ h1 {
 }
 
 @media (max-width: 560px) {
+  .settings-button span {
+    display: none;
+  }
+
   .notes {
     flex-direction: column;
     align-items: flex-start;
